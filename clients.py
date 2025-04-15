@@ -1055,7 +1055,7 @@ async def get_client_stats(aiomeraki, network_ids, rate_limiter, days_back=14):
                         daily_non_unique_count += len(clients)
                         # Add MAC addresses to the unique set
                         for client in clients:
-                            if 'mac' in client:
+                            if 'mac' in client and client['mac'] is not None:
                                 mac = client['mac'].lower()
                                 day_macs.add(mac)
                 
