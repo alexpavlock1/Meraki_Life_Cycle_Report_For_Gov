@@ -6,12 +6,14 @@ import re
 import requests
 import json
 import datetime
+import csv
 from pptx import Presentation
 from pptx.util import Inches, Pt
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from collections import defaultdict
 import random
+import argparse
 
 # ANSI color codes for terminal output
 BLUE = '\033[94m'      # General information highlights
@@ -307,6 +309,13 @@ async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
         'MV': None,
         'MT': None
     }
+
+    # For CSV export - store detailed network information
+    network_firmware_details = {
+        'MG': [],
+        'MV': [],
+        'MT': []
+    }
     
     # Find the latest stable firmware versions first
     for product_type in PRODUCT_MAPPING.values():
@@ -422,9 +431,25 @@ async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
                     # Categorize firmware status
                     status = categorize_firmware_status(current_firmware, latest_stable_firmware)
                     firmware_stats[product_category][status] += 1
+                    
+                    # Store detailed network information for CSV export
+                    network_firmware_details[product_category].append({
+                        'network_id': network['id'],
+                        'network_name': network['name'],
+                        'firmware_version': current_firmware,
+                        'status': status
+                    })
                 else:
                     # If we couldn't determine the latest stable firmware, default to critical
                     firmware_stats[product_category]['Critical'] += 1
+                    
+                    # Still store the network information for CSV
+                    network_firmware_details[product_category].append({
+                        'network_id': network['id'],
+                        'network_name': network['name'],
+                        'firmware_version': current_firmware,
+                        'status': 'Critical'  # Default to critical if we can't determine
+                    })
         
         # Check and adjust rate limiter periodically
         if hasattr(rate_limiter, 'check_and_adjust'):
@@ -451,7 +476,48 @@ async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
     # Strip out just the version strings from the latest_firmware dict
     latest_versions = {k: v['version'] for k, v in latest_firmware.items()}
     
-    return firmware_stats, latest_versions
+    return firmware_stats, latest_versions, network_firmware_details
+
+def export_firmware_to_csv(network_firmware_details, filename='mgmvmt_firmware_report.csv'):
+    """Export the firmware data to a CSV file."""
+    
+    # Prepare data for CSV - combine all product types into a single list
+    all_networks = []
+    
+    # Process networks in order: Good, Warning, Critical
+    status_order = {'Good': 0, 'Warning': 1, 'Critical': 2}
+    
+    for product_type in ['MG', 'MV', 'MT']:
+        # Sort networks by status: Good, Warning, Critical
+        sorted_networks = sorted(
+            network_firmware_details[product_type], 
+            key=lambda x: status_order.get(x['status'], 3)
+        )
+        
+        for network in sorted_networks:
+            all_networks.append({
+                'product_type': product_type,
+                'network_id': network['network_id'],
+                'network_name': network['network_name'],
+                'firmware_version': network['firmware_version'],
+                'status': network['status']
+            })
+    
+    # Write to CSV
+    try:
+        with open(filename, 'w', newline='') as csvfile:
+            fieldnames = ['product_type', 'network_id', 'network_name', 'firmware_version', 'status']
+            writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
+            
+            writer.writeheader()
+            for network in all_networks:
+                writer.writerow(network)
+                
+        print(f"{GREEN}Successfully exported firmware data to {filename}{RESET}")
+        return True
+    except Exception as e:
+        print(f"{RED}Error exporting firmware data to CSV: {e}{RESET}")
+        return False
 
 def draw_percentage_circle(slide, x, y, radius, percentage, color, line_width=2):
     """Draw a circle with percentage in the middle."""
@@ -472,7 +538,7 @@ def draw_percentage_circle(slide, x, y, radius, percentage, color, line_width=2)
     p.font.color.rgb = color
     p.alignment = PP_ALIGN.CENTER
 
-async def generate(api_client, template_path, output_path, networks=None, inventory_devices=None):
+async def generate(api_client, template_path, output_path, networks=None, inventory_devices=None, export_csv=False):
     """Generate the Firmware Compliance slide for MG, MV, MT."""
     print(f"\n{GREEN}Generating MG/MV/MT Firmware Compliance slide (Slide 9)...{RESET}")
     
@@ -504,7 +570,11 @@ async def generate(api_client, template_path, output_path, networks=None, invent
             base_url="https://api.gov-meraki.com/api/v1"
         ) as aiomeraki:
             # Analyze firmware for all networks
-            firmware_stats, latest_firmware = await analyze_network_firmware(aiomeraki, networks, rate_limiter)
+            firmware_stats, latest_firmware, network_firmware_details = await analyze_network_firmware(aiomeraki, networks, rate_limiter)
+            
+            # Export to CSV if requested
+            if export_csv:
+                export_firmware_to_csv(network_firmware_details)
     except ImportError as e:
         print(f"{YELLOW}Could not import required modules: {e}. Using mock data for testing.{RESET}")
         # Use mock data for testing if API access isn't available
@@ -544,6 +614,34 @@ async def generate(api_client, template_path, output_path, networks=None, invent
             'MV': '4.18.0',
             'MT': '1.5.0'
         }
+
+        # Mock data for network details
+        network_firmware_details = {
+            'MG': [], 'MV': [], 'MT': []
+        }
+        
+        # Create some mock network data
+        for i in range(50):
+            if i < 10:  # 10 Good networks
+                status = 'Good'
+                version = '1.15.0'
+            elif i < 30:  # 20 Warning networks
+                status = 'Warning'
+                version = '1.14.2'
+            else:  # 20 Critical networks
+                status = 'Critical'
+                version = '1.12.0'
+                
+            network_firmware_details['MG'].append({
+                'network_id': f'N_MG_{i}',
+                'network_name': f'Test Network MG {i}',
+                'firmware_version': version,
+                'status': status
+            })
+            
+        # Export to CSV if requested (even with mock data)
+        if export_csv:
+            export_firmware_to_csv(network_firmware_details)
     except Exception as e:
         print(f"{RED}Error analyzing firmware: {e}{RESET}")
         import traceback
@@ -751,7 +849,7 @@ async def generate(api_client, template_path, output_path, networks=None, invent
     total_time = time.time() - start_time
     return total_time
 
-async def main_async(org_ids, template_path=None, output_path=None):
+async def main_async(org_ids, template_path=None, output_path=None, export_csv=False):
     """
     Standalone async entry point for testing
     """
@@ -775,16 +873,20 @@ async def main_async(org_ids, template_path=None, output_path=None):
         {"id": "N3", "name": "Network 3"},
     ]
     
-    await generate(api_client, template_path, output_path, networks=sample_networks)
+    await generate(api_client, template_path, output_path, networks=sample_networks, export_csv=export_csv)
 
 if __name__ == "__main__":
     # Process command line arguments when run directly
-    if len(sys.argv) < 2:
-        print("Usage: python slide9.py <output_path> [<template_path>]")
-        sys.exit(1)
+    parser = argparse.ArgumentParser(description="Generate firmware compliance slide and/or CSV export for MG/MV/MT devices")
+    parser.add_argument("output_path", help="Path to output PowerPoint file")
+    parser.add_argument("-t", "--template", dest="template_path", help="Path to template PowerPoint file (default: same as output)")
+    parser.add_argument("--csv", action="store_true", help="Export firmware data to CSV")
     
-    output_path = sys.argv[1]
-    template_path = sys.argv[2] if len(sys.argv) > 2 else output_path
+    args = parser.parse_args()
+    
+    output_path = args.output_path
+    template_path = args.template_path if args.template_path else output_path
+    export_csv = args.csv
     
     # Run the generation
-    asyncio.run(main_async(["dummy_org"], template_path, output_path))
+    asyncio.run(main_async(["dummy_org"], template_path, output_path, export_csv))
