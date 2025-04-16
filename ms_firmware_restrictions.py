@@ -893,6 +893,28 @@ async def generate(api_client, template_path, output_path, inventory_devices=Non
         p.font.size = Pt(14)
         p.font.bold = True
         p.alignment = PP_ALIGN.RIGHT
+
+        # Add URL to slide notes (visible only to the presenter)
+        documentation_urls = [
+            "https://documentation.meraki.com/General_Administration/Firmware_Upgrades/Product_Firmware_Version_Restrictions#MS",
+            "https://documentation.meraki.com/General_Administration/Firmware_Upgrades/Product_Firmware_Version_Restrictions#Cisco_Catalyst"
+        ]
+        
+        if hasattr(slide, 'notes_slide'):
+            notes = slide.notes_slide
+        else:
+            notes = slide.notes_slide = prs.notes_master.clone_master_slide()
+        
+        # Clear any existing notes
+        for shape in notes.shapes:
+            if shape.has_text_frame:
+                shape.text_frame.clear()
+        
+        # Add the URLs to the slide notes
+        notes_text_frame = notes.notes_text_frame
+        note_p = notes_text_frame.add_paragraph()
+        note_p.text = f"Sources:\n{documentation_urls[0]}\n{documentation_urls[1]}"
+        note_p.font.size = Pt(12)
         
         # Save the presentation
         prs.save(output_path)
