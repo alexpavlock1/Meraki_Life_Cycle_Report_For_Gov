@@ -1045,6 +1045,9 @@ async def generate(api_client, template_path, output_path, inventory_devices=Non
         return
     
     #print(f"{BLUE}Using inventory data with {len(inventory_devices)} devices{RESET}")
+
+    # Documentation URL to add to slide notes
+    eol_doc_url = "https://documentation.meraki.com/General_Administration/Other_Topics/Meraki_End-of-Life_(EOL)_Products_and_Dates"
     
     # Get EOL information from documentation (or use hardcoded fallback)
     eol_data, last_updated_date, is_from_doc = get_eol_info_from_doc()
@@ -1366,6 +1369,23 @@ async def generate(api_client, template_path, output_path, inventory_devices=Non
             prs.core_properties.revision = 1
             if hasattr(prs.core_properties, 'category'):
                 prs.core_properties.category = 'Meraki Dashboard Report'
+
+        # Add URL to slide notes (visible only to the presenter)
+        if hasattr(slide, 'notes_slide'):
+            notes = slide.notes_slide
+        else:
+            notes = slide.notes_slide = prs.notes_master.clone_master_slide()
+        
+        # Clear any existing notes
+        for shape in notes.shapes:
+            if shape.has_text_frame:
+                shape.text_frame.clear()
+        
+        # Add the URL to the slide notes
+        notes_text_frame = notes.notes_text_frame
+        note_p = notes_text_frame.add_paragraph()
+        note_p.text = f"Source: {eol_doc_url}"
+        note_p.font.size = Pt(12)
         
         # Save the presentation
         prs.save(output_path)
@@ -1396,6 +1416,9 @@ async def generate_detail_slide(api_client, template_path, output_path, inventor
         return
     
     #print(f"{BLUE}Using inventory data with {len(inventory_devices)} devices{RESET}")
+
+    # Documentation URL to add to slide notes
+    eol_doc_url = "https://documentation.meraki.com/General_Administration/Other_Topics/Meraki_End-of-Life_(EOL)_Products_and_Dates"
     
     # Get EOL information from documentation (or use hardcoded fallback)
     eol_data, last_updated_date, is_from_doc = get_eol_info_from_doc()
@@ -1506,8 +1529,42 @@ async def generate_detail_slide(api_client, template_path, output_path, inventor
                 # Add content to the new slide
                 add_slide_content(new_slide, slide_title, models_for_this_slide, last_updated_date, is_from_doc)
                 
+                # Add URL to slide notes (visible only to presenter)
+                if hasattr(new_slide, 'notes_slide'):
+                    notes = new_slide.notes_slide
+                else:
+                    notes = new_slide.notes_slide = prs.notes_master.clone_master_slide()
+                
+                # Clear any existing notes
+                for shape in notes.shapes:
+                    if shape.has_text_frame:
+                        shape.text_frame.clear()
+                
+                # Add the URL to the slide notes
+                notes_text_frame = notes.notes_text_frame
+                note_p = notes_text_frame.add_paragraph()
+                note_p.text = f"Source: {eol_doc_url}"
+                note_p.font.size = Pt(12)
+
                 #print(f"{GREEN}Created slide for page {page_num} of {TOTAL_SLIDES_NEEDED}{RESET}")
         
+        # Add URL to slide 12 notes as well
+        if hasattr(slide_12, 'notes_slide'):
+            notes = slide_12.notes_slide
+        else:
+            notes = slide_12.notes_slide = prs.notes_master.clone_master_slide()
+        
+        # Clear any existing notes
+        for shape in notes.shapes:
+            if shape.has_text_frame:
+                shape.text_frame.clear()
+        
+        # Add the URL to the slide notes
+        notes_text_frame = notes.notes_text_frame
+        note_p = notes_text_frame.add_paragraph()
+        note_p.text = f"Source: {eol_doc_url}"
+        note_p.font.size = Pt(12)
+
         # Save the presentation
         prs.save(output_path)
         # print(f"{GREEN}Created {TOTAL_SLIDES_NEEDED} Device Models slides{RESET}")
