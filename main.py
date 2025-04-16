@@ -271,6 +271,8 @@ async def main():
                         help="Indicate that the organization has XDR deployed")
     parser.add_argument("--no-progress-bar", action="store_true",
                         help="Disable progress bar display")
+    parser.add_argument("--export-csv", action="store_true",
+                        help="Export firmware compliance data to CSV files")
     
     args = parser.parse_args()
     
@@ -792,7 +794,8 @@ async def main():
                         api_client,
                         output_path,
                         output_path,
-                        networks=all_networks
+                        networks=all_networks,
+                        export_csv=args.export_csv
                     )
                     print(f"{GREEN}Updated Firmware Compliance MX/MS/MR slide in PowerPoint{RESET}")
                 else:
@@ -829,7 +832,8 @@ async def main():
                         api_client,
                         output_path,
                         output_path,
-                        networks=all_networks
+                        networks=all_networks,
+                        export_csv=args.export_csv
                     )
                     print(f"{GREEN}Updated Firmware Compliance MG/MV/MT slide in PowerPoint{RESET}")
                 else:
