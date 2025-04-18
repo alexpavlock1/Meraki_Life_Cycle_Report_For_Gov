@@ -681,7 +681,7 @@ async def generate(api_client, template_path, output_path, inventory_devices=Non
         p.font.size = Pt(14)
         p.font.bold = True
         p.alignment = PP_ALIGN.RIGHT
-
+        
         # Add documentation URL to slide notes (visible only to the presenter)
         documentation_url = "https://documentation.meraki.com/General_Administration/Firmware_Upgrades/Product_Firmware_Version_Restrictions#MG"
         
