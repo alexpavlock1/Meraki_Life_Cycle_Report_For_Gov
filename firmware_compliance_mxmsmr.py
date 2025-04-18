@@ -13,6 +13,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from collections import defaultdict
 import random
+import argparse  # Make sure to import argparse
 
 # ANSI color codes for terminal output
 BLUE = '\033[94m'      # General information highlights
@@ -309,9 +310,9 @@ async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
     }
     # For CSV export - store detailed network information
     network_firmware_details = {
-    'MX': [],
-    'MS': [],
-    'MR': []
+        'MX': [],
+        'MS': [],
+        'MR': []
     }
 
     # Find the latest stable firmware versions first
@@ -554,7 +555,7 @@ async def generate(api_client, template_path, output_path, networks=None, invent
         rate_limiter = AdaptiveRateLimiter(initial_limit=50, min_limit=30, max_limit=60)
         #print(f"{GREEN}Using adaptive rate limiter with initial concurrency limit of {rate_limiter.current_limit}{RESET}")
         
-        # Set up Meraki client
+        # Set up Meraki client - KEEP government API URL
         import meraki.aio
         async with meraki.aio.AsyncDashboardAPI(
             api_key=api_key,
