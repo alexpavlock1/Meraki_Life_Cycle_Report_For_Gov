@@ -829,7 +829,7 @@ async def generate(api_client, template_path, output_path, inventory_devices=Non
         note_p = notes_text_frame.add_paragraph()
         note_p.text = f"Source: {documentation_url}"
         note_p.font.size = Pt(12)
-
+        
         # Save the presentation
         prs.save(output_path)
         #print(f"{GREEN}Updated MX slide (Slide 3) with proper firmware categorization{RESET}")
