@@ -1,7 +1,6 @@
 # Meraki_Life_Cycle_Report_For_Gov
 This is a life cycle report for end of life, end of support, and firmware compliance for Cisco Meraki devices. It also includes some dashboard insights to client counts and total devices and networks. This is specifically designed to work with Federal Dashboard.
 
-
 # Meraki LCS Report - User Guide
 
 ## Prerequisites
@@ -26,16 +25,16 @@ or install dependencies individually:
 pip install meraki python-pptx requests beautifulsoup4 numpy pandas scikit-learn python-dateutil
 ```
 
-### Setting up your Meraki API key
+### Setting up your API key
 ```bash
 # For Linux/Mac
-export MERAKI_API_GOV_KEY='your_api_key_here'
+export MERAKI_API_GOV_KEY='your_meraki_api_key_here'
 
 # For Windows (Command Prompt)
-set MERAKI_API_GOV_KEY=your_api_key_here
+set MERAKI_API_GOV_KEY=your_meraki_api_key_here
 
 # For Windows (PowerShell)
-$env:MERAKI_API_GOV_KEY="your_api_key_here"
+$env:MERAKI_API_GOV_KEY="your_meraki_api_key_here"
 ```
 
 ## Usage
@@ -50,10 +49,24 @@ python main.py -o <organization_id> [options]
 - `-d, --days [DAYS]`: Number of days to look back for client data (1-31, default: 14)
 - `--output [PATH]`: Custom output path for PowerPoint file (default: "meraki_report.pptx")
 - `--template [PATH]`: Custom PowerPoint template path (default: "template.pptx")
-- `--slides [LIST]`: Comma-separated list of slide numbers to generate (default: all)
+- `--slides [LIST]`: Comma-separated list of slide types to generate (default: all). Valid values:
+  - `dashboard`: Client usage and network dashboard
+  - `mx`: MX firmware restrictions
+  - `ms`: MS firmware restrictions
+  - `mr`: MR firmware restrictions
+  - `mv`: MV firmware restrictions
+  - `mg`: MG firmware restrictions
+  - `compliance-mxmsmr`: Firmware compliance for MX, MS and MR devices
+  - `compliance-mgmvmt`: Firmware compliance for MG, MV and MT devices
+  - `eol-summary`: End of Life products summary
+  - `eol-detail`: Detailed End of Life device information
+  - `product-adoption`: Meraki product adoption overview
+  - `executive-summary`: Executive summary
+  - `predictive-lifecycle`: Predictive lifecycle management 
+  - `psirt-advisories`: PSIRT security advisories. Dependent on firmware compliance scripts to run as well.
 - `--debug`: Enable verbose debugging output
 - `--keep-all-slides`: Don't remove slides for missing device types
-- `--export-csv`: Export firmware compliance data to CSV files (mxmsmr_firmware_report.csv and mgmvmt_firmware_report.csv)
+- `--no-csv-export`: Disable automatic export of firmware compliance data to CSV files. This will also cause PSIRT slides to not generate. (By default, the program exports firmware data to mxmsmr_firmware_report.csv and mgmvmt_firmware_report.csv)
 
 ### Product Adoption Flags
 - `--secure-connect`: Indicate organization has Secure Connect deployed
@@ -65,8 +78,19 @@ python main.py -o <organization_id> [options]
 ### Debug Module Flags
 - `--debug-clients`: Run only the clients dashboard slide
 - `--debug-mx`: Run only the MX firmware restrictions slide
+- `--debug-ms`: Run only the MS firmware restrictions slide
+- `--debug-mr`: Run only the MR firmware restrictions slide
+- `--debug-mv`: Run only the MV firmware restrictions slide
+- `--debug-mg`: Run only the MG firmware restrictions slide
+- `--debug-compliance-mxmsmr`: Run only the MX/MS/MR firmware compliance slide
+- `--debug-compliance-mgmvmt`: Run only the MG/MV/MT firmware compliance slide
+- `--debug-eol-summary`: Run only the End of Life summary slide
+- `--debug-eol-detail`: Run only the detailed End of Life slide
 - `--debug-adoption`: Run only the product adoption slide
 - `--debug-executive-summary`: Run only the executive summary slide
+- `--debug-predictive-lifecycle`: Run only the predictive lifecycle slide
+- `--debug-psirt-advisories`: Run only the PSIRT advisories slide
+- `--debug-slide [TYPE]`: Run only the specified slide type (use any of the slide type names from the `--slides` option)
 
 ## Output
 The program generates a comprehensive PowerPoint presentation with slides including:
@@ -79,14 +103,20 @@ The program generates a comprehensive PowerPoint presentation with slides includ
 6. End of Life product summary and details
 7. Product adoption overview
 8. Predictive lifecycle management
+9. PSIRT Advisories for Cisco Meraki products, including firmware vulnerability analysis
 
 The report automatically adapts to show only relevant slides based on your organization's device inventory.
 
-When using the `--export-csv` flag, the program also generates CSV files containing firmware compliance data:
+By default, the program generates CSV files containing firmware compliance data:
 - `mxmsmr_firmware_report.csv`: Firmware data for MX, MS, and MR devices
 - `mgmvmt_firmware_report.csv`: Firmware data for MG, MV, and MT devices
 
+To disable automatic CSV export, use the `--no-csv-export` flag.
+
 These CSV files include network ID, network name, firmware version, and compliance status (Good, Warning, Critical) for each network, sorted by status.
+
+Additionally, the PSIRT advisories module generates CSV files for any potentially affected devices:
+- `psirt_affected_[advisory-id].csv`: Networks with devices potentially affected by specific security advisories, containing product type, network information, current firmware version, and advisory details.
 
 ## Report Methodology
 
@@ -140,10 +170,8 @@ python main.py -o 123456
 python main.py -o 123456 789012 -d 30
 
 # Generate only specific slides with custom output
-python main.py -o 123456 --slides 1,2,3,6 --output custom_report.pptx
+python main.py -o 123456 --slides dashboard,mx,ms,psirt-advisories --output custom_report.pptx
 
-# Generate report and export firmware compliance data to CSV
-python main.py -o 123456 --export-csv
 ```
 
 ## Troubleshooting
