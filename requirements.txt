@@ -7,3 +7,6 @@ pandas>=1.2.0
 scikit-learn>=0.24.0
 python-dateutil>=2.8.1
 aiohttp>=3.8.0
+# For PSIRT Advisories
+certifi>=2023.7.22
+charset-normalizer>=3.0.0
