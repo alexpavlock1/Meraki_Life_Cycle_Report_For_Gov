@@ -1045,7 +1045,7 @@ async def generate(api_client, template_path, output_path, inventory_devices=Non
         return
     
     #print(f"{BLUE}Using inventory data with {len(inventory_devices)} devices{RESET}")
-
+    
     # Documentation URL to add to slide notes
     eol_doc_url = "https://documentation.meraki.com/General_Administration/Other_Topics/Meraki_End-of-Life_(EOL)_Products_and_Dates"
     
@@ -1369,7 +1369,7 @@ async def generate(api_client, template_path, output_path, inventory_devices=Non
             prs.core_properties.revision = 1
             if hasattr(prs.core_properties, 'category'):
                 prs.core_properties.category = 'Meraki Dashboard Report'
-
+        
         # Add URL to slide notes (visible only to the presenter)
         if hasattr(slide, 'notes_slide'):
             notes = slide.notes_slide
@@ -1416,7 +1416,7 @@ async def generate_detail_slide(api_client, template_path, output_path, inventor
         return
     
     #print(f"{BLUE}Using inventory data with {len(inventory_devices)} devices{RESET}")
-
+    
     # Documentation URL to add to slide notes
     eol_doc_url = "https://documentation.meraki.com/General_Administration/Other_Topics/Meraki_End-of-Life_(EOL)_Products_and_Dates"
     
@@ -1545,7 +1545,7 @@ async def generate_detail_slide(api_client, template_path, output_path, inventor
                 note_p = notes_text_frame.add_paragraph()
                 note_p.text = f"Source: {eol_doc_url}"
                 note_p.font.size = Pt(12)
-
+                
                 #print(f"{GREEN}Created slide for page {page_num} of {TOTAL_SLIDES_NEEDED}{RESET}")
         
         # Add URL to slide 12 notes as well
@@ -1564,7 +1564,7 @@ async def generate_detail_slide(api_client, template_path, output_path, inventor
         note_p = notes_text_frame.add_paragraph()
         note_p.text = f"Source: {eol_doc_url}"
         note_p.font.size = Pt(12)
-
+        
         # Save the presentation
         prs.save(output_path)
         # print(f"{GREEN}Created {TOTAL_SLIDES_NEEDED} Device Models slides{RESET}")
