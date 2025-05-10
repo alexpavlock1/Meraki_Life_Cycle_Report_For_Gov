@@ -1090,16 +1090,77 @@ async def main():
     eol_data = None
     
     # Try to extract firmware compliance data from slides 8-9
-    if FIRMWARE_COMPLIANCE_MXMSMR_AVAILABLE:
-        try:
-            firmware_compliance_data = {
-                'MX': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None},
-                'MS': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None},
-                'MR': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None}
-            }
+    firmware_compliance_data = {}
+    
+    # First try to load from the JSON files created by the firmware compliance scripts
+    try:
+        # Try to load MXMSMR data
+        if os.path.exists('mxmsmr_firmware_stats.json'):
+            with open('mxmsmr_firmware_stats.json', 'r') as f:
+                mxmsmr_data = json.load(f)
+                mxmsmr_stats = mxmsmr_data.get('firmware_stats', {})
+                mxmsmr_latest = mxmsmr_data.get('latest_versions', {})
+                
+                # Add to combined data
+                for device_type in ['MX', 'MS', 'MR']:
+                    if device_type in mxmsmr_stats:
+                        firmware_compliance_data[device_type] = mxmsmr_stats[device_type]
+                        # Ensure latest firmware version is included
+                        if device_type in mxmsmr_latest:
+                            firmware_compliance_data[device_type]['latest'] = mxmsmr_latest[device_type]
             
+        # Try to load MGMVMT data
+        if os.path.exists('mgmvmt_firmware_stats.json'):
+            with open('mgmvmt_firmware_stats.json', 'r') as f:
+                mgmvmt_data = json.load(f)
+                mgmvmt_stats = mgmvmt_data.get('firmware_stats', {})
+                mgmvmt_latest = mgmvmt_data.get('latest_versions', {})
+                
+                # Add to combined data
+                for device_type in ['MG', 'MV', 'MT']:
+                    if device_type in mgmvmt_stats:
+                        firmware_compliance_data[device_type] = mgmvmt_stats[device_type]
+                        # Ensure latest firmware version is included
+                        if device_type in mgmvmt_latest:
+                            firmware_compliance_data[device_type]['latest'] = mgmvmt_latest[device_type]
+                        
+    except Exception as e:
+        print(f"{YELLOW}Error loading firmware data from JSON files: {e}{RESET}")
+    
+    # Fallback: Try to get data from global variables in the modules
+    if not firmware_compliance_data and FIRMWARE_COMPLIANCE_MXMSMR_AVAILABLE:
+        try:
+            # Get data from global variable in firmware_compliance_mxmsmr module
+            from firmware_compliance_mxmsmr import firmware_stats_mxmsmr
+            for device_type in ['MX', 'MS', 'MR']:
+                if device_type in firmware_stats_mxmsmr:
+                    if device_type not in firmware_compliance_data:
+                        firmware_compliance_data[device_type] = firmware_stats_mxmsmr[device_type]
         except Exception as e:
-            print(f"{YELLOW}Could not extract firmware compliance data: {e}{RESET}")
+            print(f"{YELLOW}Could not extract firmware compliance data from MXMSMR module: {e}{RESET}")
+            
+    if not firmware_compliance_data and FIRMWARE_COMPLIANCE_MGMVMT_AVAILABLE:
+        try:
+            # Get data from global variable in firmware_compliance_mgmvmt module
+            from firmware_compliance_mgmvmt import firmware_stats_mgmvmt
+            for device_type in ['MG', 'MV', 'MT']:
+                if device_type in firmware_stats_mgmvmt:
+                    if device_type not in firmware_compliance_data:
+                        firmware_compliance_data[device_type] = firmware_stats_mgmvmt[device_type]
+        except Exception as e:
+            print(f"{YELLOW}Could not extract firmware compliance data from MGMVMT module: {e}{RESET}")
+            
+    # Last resort fallback if all else fails
+    if not firmware_compliance_data:
+        print(f"{YELLOW}Could not extract firmware compliance data, creating empty template{RESET}")
+        firmware_compliance_data = {
+            'MX': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None},
+            'MS': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None},
+            'MR': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None},
+            'MG': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None},
+            'MV': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None},
+            'MT': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None}
+        }
     
     # Try to extract EOL data from slides 10-11
     if END_OF_LIFE_AVAILABLE:
@@ -1107,7 +1168,7 @@ async def main():
             # Get the actual EOL data from the documentation
             from end_of_life import get_eol_info_from_doc
             eol_data, last_updated, is_from_doc = get_eol_info_from_doc()
-            
+
         except Exception as e:
             print(f"{YELLOW}Could not fetch EOL data: {e}, using fallback{RESET}")
             # Only use fallback data if fetch fails
