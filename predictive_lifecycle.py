@@ -1200,6 +1200,12 @@ class RhinoPriceCatalog:
             # Catalyst Series - Added -M suffix for Meraki-managed Catalyst switches
             {"url": "https://www.rhinonetworks.com/product/device/meraki-c9300x-24y-m", "model": "C9300X-24Y"},
             {"url": "https://www.rhinonetworks.com/product/device/meraki-c9300-48un-m", "model": "C9300-48UN-M"},
+
+            # Catalyst License Products - Fixed URLs
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-c9300-24-enterprise", "model": "C9300-24-ENTERPRISE-LICENSE"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-c9300-48-enterprise", "model": "C9300-48-ENTERPRISE-LICENSE"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-c9300-24-advanced", "model": "C9300-24-ADVANCED-LICENSE"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-c9300-48-advanced", "model": "C9300-48-ADVANCED-LICENSE"},
             
             # Catalyst AP Series - Use cisco-cwXXXX-mr pattern for Catalyst APs
             {"url": "https://www.rhinonetworks.com/product/device/cisco-cw9163e-mr", "model": "CW9163E"},
@@ -1208,9 +1214,29 @@ class RhinoPriceCatalog:
             # Z Series
             {"url": "https://www.rhinonetworks.com/product/device/meraki-z4", "model": "Z4"},
             {"url": "https://www.rhinonetworks.com/product/device/meraki-z4c", "model": "Z4C"},
-            
+
+            # VMX License Products - Fixed URLs
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-vmx-small", "model": "VMX-SMALL-LICENSE"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-vmx-medium", "model": "VMX-MEDIUM-LICENSE"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-vmx-large", "model": "VMX-LARGE-LICENSE"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-vmx-xlarge", "model": "VMX-XLARGE-LICENSE"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-vmx-medium-3yr", "model": "VMX-MEDIUM-LICENSE-3YR"},
+
             # MG Series
             {"url": "https://www.rhinonetworks.com/product/device/meraki-mg21e", "model": "MG21E"},
+
+            # Systems Manager Licenses
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-systems-manager-enterprise", "model": "SYSTEMS-MANAGER-ENTERPRISE-LICENSES"},
+
+            # Insight Licenses
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-insight-xsmall", "model": "INSIGHT-LICENSE-XSMALL"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-insight-small", "model": "INSIGHT-LICENSE-SMALL"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-insight-medium", "model": "INSIGHT-LICENSE-MEDIUM"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-insight-large", "model": "INSIGHT-LICENSE-LARGE"},
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-insight-xlarge", "model": "INSIGHT-LICENSE-XLARGE"},
+
+            # Display Licenses
+            {"url": "https://www.rhinonetworks.com/product/license/meraki-display", "model": "DISPLAY"},
         ]
         
         # Get existing model URLs
