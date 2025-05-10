@@ -13,7 +13,7 @@ from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 from collections import defaultdict
 import random
-import argparse  # Make sure to import argparse
+import argparse
 
 # ANSI color codes for terminal output
 BLUE = '\033[94m'      # General information highlights
@@ -35,6 +35,13 @@ PRODUCT_MAPPING = {
     'catalyst_wireless': 'MR',  # Map Catalyst Wireless to MR for reporting
     'switch': 'MS',
     'appliance': 'MX'
+}
+
+# Initialize global variable to store firmware stats for executive summary
+firmware_stats_mxmsmr = {
+    'MX': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None},
+    'MS': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None},
+    'MR': {'Good': 0, 'Warning': 0, 'Critical': 0, 'Total': 0, 'latest': None}
 }
 
 # Import the AdaptiveRateLimiter from the clients module if available
@@ -269,7 +276,7 @@ def categorize_firmware_status(current_firmware, latest_stable_firmware):
     """
     Categorize firmware status as Good, Warning, or Critical.
     
-    Good: Running latest major version with latest patch
+    Good: Running version equal to or newer than the latest stable version
     Warning: Running latest major version but old patch
     Critical: Running older major version
     """
@@ -285,13 +292,35 @@ def categorize_firmware_status(current_firmware, latest_stable_firmware):
     if not current_major or not latest_major:
         return "Critical"  # Default to critical if we can't parse versions
     
-    if current_major == latest_major:
-        if current_full == latest_full:
-            return "Good"  # Same major version and patch
+    # Compare the full version numbers as floats
+    current_major_float = float(current_major)
+    latest_major_float = float(latest_major)
+    
+    # Newer major version than stable or same version
+    if current_major_float > latest_major_float:
+        return "Good"  # Running newer major version than stable
+    elif current_major_float == latest_major_float:
+        # Check the full version (including patch)
+        current_parts = current_full.split('.')
+        latest_parts = latest_full.split('.')
+        
+        # Compare each part of the version number
+        for i in range(min(len(current_parts), len(latest_parts))):
+            curr_part = int(current_parts[i])
+            latest_part = int(latest_parts[i])
+            
+            if curr_part > latest_part:
+                return "Good"  # Running newer patch/minor version
+            elif curr_part < latest_part:
+                return "Warning"  # Running older patch/minor version
+        
+        # If all compared parts are equal, compare the length
+        if len(current_parts) >= len(latest_parts):
+            return "Good"  # Same version or more detailed version
         else:
-            return "Warning"  # Same major version but different patch
+            return "Warning"  # Less detailed version
     else:
-        return "Critical"  # Different major version
+        return "Critical"  # Older major version
 
 async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
     """Analyze firmware status for all networks."""
@@ -308,13 +337,14 @@ async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
         'MS': None,
         'MR': None
     }
+    
     # For CSV export - store detailed network information
     network_firmware_details = {
         'MX': [],
         'MS': [],
         'MR': []
     }
-
+    
     # Find the latest stable firmware versions first
     for product_type in PRODUCT_MAPPING.values():
         latest_firmware[product_type] = {
@@ -425,10 +455,12 @@ async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
                 latest_stable_firmware = latest_firmware[product_category]['version']
                 
                 if latest_stable_firmware:
-                    # Categorize firmware status
+                    # Categorize firmware status using our updated logic
                     status = categorize_firmware_status(current_firmware, latest_stable_firmware)
+                    
+                    # Increment counter for the appropriate status category
                     firmware_stats[product_category][status] += 1
-
+                    
                     # Store detailed network information for CSV export
                     network_firmware_details[product_category].append({
                         'network_id': network['id'],
@@ -439,7 +471,7 @@ async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
                 else:
                     # If we couldn't determine the latest stable firmware, default to critical
                     firmware_stats[product_category]['Critical'] += 1
-
+                    
                     # Still store the network information for CSV
                     network_firmware_details[product_category].append({
                         'network_id': network['id'],
@@ -447,6 +479,7 @@ async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
                         'firmware_version': current_firmware,
                         'status': 'Critical'  # Default to critical if we can't determine
                     })
+        
         # Check and adjust rate limiter periodically
         if hasattr(rate_limiter, 'check_and_adjust'):
             rate_limiter.check_and_adjust()
@@ -469,6 +502,26 @@ async def analyze_network_firmware(aiomeraki, networks, rate_limiter):
     
     # Strip out just the version strings from the latest_firmware dict
     latest_versions = {k: v['version'] for k, v in latest_firmware.items()}
+    
+    # Store the firmware stats in a global variable for use by executive_summary
+    global firmware_stats_mxmsmr
+    firmware_stats_mxmsmr = firmware_stats.copy()
+    
+    # Add the latest firmware versions to the firmware stats for each product type
+    for product_type, latest_version in latest_versions.items():
+        if product_type in firmware_stats_mxmsmr:
+            firmware_stats_mxmsmr[product_type]['latest'] = latest_version
+    
+    # Export firmware stats to a JSON file for executive summary to read
+    try:
+        with open('mxmsmr_firmware_stats.json', 'w') as f:
+            json_data = {
+                'firmware_stats': firmware_stats,
+                'latest_versions': latest_versions
+            }
+            json.dump(json_data, f)
+    except Exception as e:
+        print(f"{RED}Error exporting firmware stats to JSON: {e}{RESET}")
     
     return firmware_stats, latest_versions, network_firmware_details
 
@@ -546,6 +599,9 @@ async def generate(api_client, template_path, output_path, networks=None, invent
     
     #print(f"{BLUE}Using network data for {len(networks)} networks{RESET}")
     
+    # This variable will be used to store firmware stats for use by executive_summary
+    global firmware_stats_mxmsmr
+    
     # Import meraki API for firmware data
     try:
         # Get API key - use imported function or fallback
@@ -555,7 +611,7 @@ async def generate(api_client, template_path, output_path, networks=None, invent
         rate_limiter = AdaptiveRateLimiter(initial_limit=50, min_limit=30, max_limit=60)
         #print(f"{GREEN}Using adaptive rate limiter with initial concurrency limit of {rate_limiter.current_limit}{RESET}")
         
-        # Set up Meraki client - KEEP government API URL
+        # Set up Meraki client with Government API base URL
         import meraki.aio
         async with meraki.aio.AsyncDashboardAPI(
             api_key=api_key,
@@ -565,6 +621,7 @@ async def generate(api_client, template_path, output_path, networks=None, invent
         ) as aiomeraki:
             # Analyze firmware for all networks
             firmware_stats, latest_firmware, network_firmware_details = await analyze_network_firmware(aiomeraki, networks, rate_limiter)
+            
             # Export to CSV if requested
             if export_csv:
                 export_firmware_to_csv(network_firmware_details)
@@ -614,6 +671,7 @@ async def generate(api_client, template_path, output_path, networks=None, invent
             'MS': '15.22.0',
             'MR': '31.1.5'
         }
+        
         # Mock data for network details
         network_firmware_details = {
             'MX': [], 'MS': [], 'MR': []
@@ -796,24 +854,23 @@ async def generate(api_client, template_path, output_path, networks=None, invent
                 # Filter versions for this category based on their relationship to the latest firmware
                 filtered_versions = {}
                 
-                # Always show the latest stable version for the "Good" category
+                # For all categories, we need to recheck all versions to ensure
+                # they're properly categorized based on our updated logic
+                for version, v_count in firmware_stats[product]['Versions'].items():
+                    # Get the proper status for this version with our new categorization logic
+                    status = categorize_firmware_status(version, latest_firmware[product])
+                    
+                    # Only include versions that match the current category we're displaying
+                    if status == category:
+                        filtered_versions[version] = v_count
+                
+                # Always ensure the latest stable version appears in the "Good" category
                 if category == 'Good' and latest_firmware[product]:
                     latest_version = latest_firmware[product]
-                    total_version_count = 0
                     
-                    # See if any networks are actually running this version
-                    for version, v_count in firmware_stats[product]['Versions'].items():
-                        if version == latest_version:
-                            total_version_count = v_count
-                    
-                    # Add the version to our display list - even if count is 0
-                    filtered_versions[latest_version] = total_version_count
-                else:
-                    # For Warning and Critical, just show actual versions in use
-                    for version, v_count in firmware_stats[product]['Versions'].items():
-                        status = categorize_firmware_status(version, latest_firmware[product])
-                        if status == category:
-                            filtered_versions[version] = v_count
+                    # If the latest stable version isn't already in our list, add it with count 0
+                    if latest_version not in filtered_versions:
+                        filtered_versions[latest_version] = 0
                 
                 # Sort and display top 5 versions for this category
                 top_versions = sorted(filtered_versions.items(), key=lambda x: x[1], reverse=True)[:5]
