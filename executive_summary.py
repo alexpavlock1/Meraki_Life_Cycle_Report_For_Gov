@@ -252,22 +252,38 @@ def check_firmware_version_status(model_prefix, firmware_version, firmware_stats
     if firmware_version == latest_firmware:
         return 'good'
     
-    # Check if firmware is in critical list
+    # Check overall firmware health stats
     critical_percentage = firmware_stats[model_prefix].get('Critical', 0) / max(firmware_stats[model_prefix].get('Total', 1), 1) * 100
+    warning_percentage = firmware_stats[model_prefix].get('Warning', 0) / max(firmware_stats[model_prefix].get('Total', 1), 1) * 100
     
-    # If high percentage of critical firmware, classify as critical
-    if critical_percentage >= 75:
-        return 'critical'
+    # First, check if this device type has significant critical firmware issues
+    if critical_percentage >= 50:
+        return 'critical'  # More weight on critical percentage
     elif critical_percentage >= 25:
-        return 'warning'
-        
-    # Otherwise, just a warning as it's not the latest
+        return 'warning'  # Moderate weight on critical percentage
+    
+    # Then consider warning percentage
+    if warning_percentage >= 40:
+        return 'warning'  # High warning percentage
+    
+    # Check individual device's firmware status
+    # If we can't determine specific status from version, use the product's overall health
+    good_percentage = firmware_stats[model_prefix].get('Good', 0) / max(firmware_stats[model_prefix].get('Total', 1), 1) * 100
+    if good_percentage >= 80:
+        return 'good'  # Most devices are good, so this one likely is too
+    elif warning_percentage > critical_percentage:
+        return 'warning'  # More devices in warning than critical
+    elif critical_percentage > 0:
+        return 'warning'  # Some devices are critical, be cautious
+    
+    # Default to warning for unrecognized firmware versions
     return 'warning'
 
 def categorize_device_health(device, firmware_stats, eol_data):
     """
     Categorize a device based on firmware compliance and EOL status.
-    accounts for critical firmware status and weighs EOL more heavily
+    Accounts for critical firmware status, weighs EOL more heavily, and
+    considers the overall firmware health of the device family.
     """
     model = device.get('model', '')
     if not model:
@@ -278,14 +294,34 @@ def categorize_device_health(device, firmware_stats, eol_data):
     approaching_eol = False
     end_of_sale_reached = False
     firmware_status = 'good'
+    device_type_firmware_health = 'good'  # Track overall device type firmware health
     
-    # Check firmware compliance
-    if firmware_stats:
-        model_prefix = model[:2].upper()
-        if model_prefix in ['MX', 'MS', 'MR', 'MV', 'MG', 'MT'] and model_prefix in firmware_stats:
-            device_firmware = device.get('firmware', '')
-            if device_firmware:
-                firmware_status = check_firmware_version_status(model_prefix, device_firmware, firmware_stats)
+    # Extract model prefix for firmware stats
+    model_prefix = model[:2].upper() if len(model) >= 2 else ''
+    
+    # Check firmware compliance - both individual device and overall device type
+    if firmware_stats and model_prefix in ['MX', 'MS', 'MR', 'MV', 'MG', 'MT'] and model_prefix in firmware_stats:
+        # Check individual device firmware
+        device_firmware = device.get('firmware', '')
+        if device_firmware:
+            firmware_status = check_firmware_version_status(model_prefix, device_firmware, firmware_stats)
+        
+        # Check overall device type firmware health (regardless of this specific device)
+        total_devices = firmware_stats[model_prefix].get('Total', 0)
+        if total_devices > 0:
+            critical_pct = firmware_stats[model_prefix].get('Critical', 0) / total_devices * 100
+            warning_pct = firmware_stats[model_prefix].get('Warning', 0) / total_devices * 100
+            good_pct = firmware_stats[model_prefix].get('Good', 0) / total_devices * 100
+            
+            # Determine overall health of this device type - MORE LENIENT
+            if critical_pct >= 50:  # Increased from 25 to 50
+                device_type_firmware_health = 'critical'
+            elif critical_pct >= 25 or warning_pct >= 60:  # Increased thresholds
+                device_type_firmware_health = 'warning'
+            elif good_pct >= 40:  # Decreased from 70 to 40
+                device_type_firmware_health = 'good'
+            else:
+                device_type_firmware_health = 'warning'  # Default to warning if can't determine
     
     # Check if device model appears in EOL data
     if eol_data:
@@ -297,6 +333,7 @@ def categorize_device_health(device, firmware_stats, eol_data):
                 if eol_date:
                     try:
                         # Convert date string to datetime object
+                        from datetime import datetime
                         eol_datetime = datetime.strptime(eol_date, "%b %d, %Y")
                         current_date = datetime.now()
                         
@@ -325,13 +362,17 @@ def categorize_device_health(device, firmware_stats, eol_data):
                         pass
                 break
     
-    # Determine overall health
-    if is_eol or firmware_status == 'critical':
-        return 'critical'
-    elif approaching_eol or end_of_sale_reached or firmware_status == 'warning':
-        return 'warning'
+    # Determine overall health - considering both individual device status and overall device type health
+    if is_eol:
+        return 'critical'  # End of Support is always critical
+    elif firmware_status == 'critical' or device_type_firmware_health == 'critical':
+        return 'critical'  # Critical firmware status (either device or device type)
+    elif approaching_eol or end_of_sale_reached:
+        return 'warning'   # Approaching EOL or End of Sale
+    elif firmware_status == 'warning' or device_type_firmware_health == 'warning':
+        return 'warning'   # Warning firmware status (either device or device type)
     else:
-        return 'good'
+        return 'good'      # All good!
 def add_score_deduction_explanation(slide, deduction_reasons):
     """
     Add explanations for score deductions to the slide using exact positioning.
@@ -456,35 +497,35 @@ def calculate_health_score(inventory_devices, firmware_stats, eol_data, dashboar
             
             # Use threshold-based penalties instead of linear scaling
             
-            # Penalty for critical devices
-            if critical_pct >= 25:
-                deduction = 30  # Severe penalty for 25%+ critical devices
+            # Penalty for critical devices - MORE LENIENT
+            if critical_pct >= 60:  # Increased threshold
+                deduction = 20  # Reduced from 30 to 20
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {critical_pct:.1f}% of devices have critical health status")
-            elif critical_pct >= 15:
-                deduction = 20  # Major penalty for 15-25% critical devices
+            elif critical_pct >= 40:  # Increased threshold
+                deduction = 15  # Reduced from 20 to 15
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {critical_pct:.1f}% of devices have critical health status")
-            elif critical_pct >= 5:
-                deduction = 10  # Moderate penalty for 5-15% critical devices
+            elif critical_pct >= 20:  # Increased threshold
+                deduction = 8  # Reduced from 10 to 8
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {critical_pct:.1f}% of devices have critical health status")
             elif critical_pct > 0:
-                deduction = 5   # Minor penalty for >0-5% critical devices
+                deduction = 3   # Reduced from 5 to 3
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {critical_pct:.1f}% of devices have critical health status")
             
-            # Penalty for warning devices
-            if warning_pct >= 40:
-                deduction = 15  # Major penalty for 40%+ warning devices
+            # Penalty for warning devices - MORE LENIENT
+            if warning_pct >= 60:  # Increased threshold
+                deduction = 10  # Reduced from 15 to 10
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {warning_pct:.1f}% of devices have warning health status")
-            elif warning_pct >= 25:
-                deduction = 10  # Moderate penalty for 25-40% warning devices
+            elif warning_pct >= 40:  # Increased threshold
+                deduction = 5  # Reduced from 10 to 5
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {warning_pct:.1f}% of devices have warning health status")
-            elif warning_pct >= 10:
-                deduction = 5   # Minor penalty for 10-25% warning devices
+            elif warning_pct >= 20:  # Increased threshold
+                deduction = 2   # Reduced from 5 to 2
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {warning_pct:.1f}% of devices have warning health status")
             
@@ -516,36 +557,54 @@ def calculate_health_score(inventory_devices, firmware_stats, eol_data, dashboar
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {eosale_pct:.1f}% of devices have reached end-of-sale")
     
-    # Check firmware criticality with threshold-based penalties
+    # Check firmware criticality with threshold-based penalties - consider both Critical and Warning
     if firmware_stats:
         total_fw_devices = 0
         critical_fw_devices = 0
+        warning_fw_devices = 0
         
         for device_type in ['MX', 'MS', 'MR', 'MV', 'MG', 'MT']:
             if device_type in firmware_stats:
                 total_fw_devices += firmware_stats[device_type].get('Total', 0)
                 critical_fw_devices += firmware_stats[device_type].get('Critical', 0)
+                warning_fw_devices += firmware_stats[device_type].get('Warning', 0)
         
         if total_fw_devices > 0:
             critical_fw_pct = (critical_fw_devices / total_fw_devices) * 100
+            warning_fw_pct = (warning_fw_devices / total_fw_devices) * 100
             
-            # Penalty for critical firmware
-            if critical_fw_pct >= 25:
-                deduction = 20  # Major penalty for 25%+ critical firmware
+            # Penalty for critical firmware - REDUCED FOR MORE LENIENCY
+            if critical_fw_pct >= 50:  # Increased threshold
+                deduction = 15  # Reduced from 20 to 15
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {critical_fw_pct:.1f}% of devices on critical firmware versions")
-            elif critical_fw_pct >= 15:
-                deduction = 15  # Moderate penalty for 15-25% critical firmware
+            elif critical_fw_pct >= 30:  # Increased threshold
+                deduction = 10  # Reduced from 15 to 10
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {critical_fw_pct:.1f}% of devices on critical firmware versions")
-            elif critical_fw_pct >= 5:
-                deduction = 10  # Minor penalty for 5-15% critical firmware
+            elif critical_fw_pct >= 15:  # Increased threshold
+                deduction = 5  # Reduced from 10 to 5
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {critical_fw_pct:.1f}% of devices on critical firmware versions")
             elif critical_fw_pct > 0:
-                deduction = 5   # Minimal penalty for >0-5% critical firmware
+                deduction = 2   # Reduced from 5 to 2
                 score -= deduction
                 deduction_reasons.append(f"-{deduction} points: {critical_fw_pct:.1f}% of devices on critical firmware versions")
+            
+            # Additional penalty for warning firmware (if not already heavily penalized for critical)
+            # REDUCED FOR MORE LENIENCY
+            if critical_fw_pct < 15 and warning_fw_pct >= 60:  # Increased threshold
+                deduction = 5  # Reduced from 10 to 5
+                score -= deduction
+                deduction_reasons.append(f"-{deduction} points: {warning_fw_pct:.1f}% of devices on warning firmware versions")
+            elif critical_fw_pct < 20 and warning_fw_pct >= 40:  # Increased threshold
+                deduction = 3  # Reduced from 5 to 3
+                score -= deduction
+                deduction_reasons.append(f"-{deduction} points: {warning_fw_pct:.1f}% of devices on warning firmware versions")
+            elif critical_fw_pct < 25 and warning_fw_pct >= 20:  # Increased threshold
+                deduction = 1  # Reduced from 3 to 1
+                score -= deduction
+                deduction_reasons.append(f"-{deduction} points: {warning_fw_pct:.1f}% of devices on warning firmware versions")
     
     # Check for missing key products
     if products:
@@ -1169,7 +1228,59 @@ def create_network_health_metrics(slide, device_health, firmware_stats, eol_data
     # Calculate health metrics
     total_devices = sum(device_health.values())
     good_devices = device_health.get('good', 0)
-    device_health_pct = (good_devices / total_devices * 100) if total_devices > 0 else 0
+    
+    # If we have firmware_stats, factor them into the device health percentage
+    device_health_pct = 0
+    if firmware_stats:
+        # Calculate weighted average of firmware health across device types
+        total_fw_devices = 0
+        total_fw_good = 0
+        total_fw_warning = 0
+        total_fw_critical = 0
+        
+        # Gather firmware stats first
+        for device_type in ['MX', 'MS', 'MR', 'MV', 'MG', 'MT']:
+            if device_type in firmware_stats:
+                type_total = firmware_stats[device_type].get('Total', 0)
+                if type_total > 0:
+                    total_fw_devices += type_total
+                    total_fw_good += firmware_stats[device_type].get('Good', 0)
+                    total_fw_warning += firmware_stats[device_type].get('Warning', 0)
+                    total_fw_critical += firmware_stats[device_type].get('Critical', 0)
+        
+        # Calculate overall firmware health percentage
+        if total_fw_devices > 0:
+            fw_good_pct = (total_fw_good / total_fw_devices) * 100
+            fw_warning_pct = (total_fw_warning / total_fw_devices) * 100
+            fw_critical_pct = (total_fw_critical / total_fw_devices) * 100
+            
+            # Calculate adjusted device health percentage
+            # Use a weighted combination of device health and firmware health
+            if total_devices > 0:
+                # Calculate raw device health percentage
+                raw_device_health_pct = (good_devices / total_devices) * 100
+                
+                # Adjust health percentage - MORE LENIENT, give less weight to firmware status
+                device_health_pct = (raw_device_health_pct * 0.7) + (fw_good_pct * 0.3)
+                
+                # Apply a leniency boost to avoid very low scores
+                if device_health_pct < 80 and fw_good_pct > 0:
+                    # Apply a progressive boost that provides more help to lower scores
+                    # but doesn't artificially inflate already good scores
+                    boost = max(0, (80 - device_health_pct) * 0.25)
+                    device_health_pct += boost
+                
+                # Cap at 100%
+                device_health_pct = min(100, device_health_pct)
+            else:
+                # If no device health data, use firmware health
+                device_health_pct = fw_good_pct
+        else:
+            # Fall back to raw calculation if no firmware data
+            device_health_pct = (good_devices / total_devices * 100) if total_devices > 0 else 0
+    else:
+        # Use simple calculation if no firmware stats
+        device_health_pct = (good_devices / total_devices * 100) if total_devices > 0 else 0
     
     # Calculate EOL statistics
     eol_stats = {'current': 0, 'approaching': 0, 'past': 0}
@@ -1352,6 +1463,10 @@ def add_health_score_explanation(slide):
     note_p.font.color.rgb = RGBColor(128, 128, 128)  # Gray
     
     return note_box
+
+# IMPORTANT: This is a key difference for government API integration
+# Here we would define the base URL for government API
+GOV_BASE_URL = "api.meraki.com/gov"  # This value should be adjusted to the actual government API base URL
 
 async def generate(api_client, template_path, output_path, 
                   inventory_devices=None, networks=None, 
@@ -1622,12 +1737,13 @@ async def main_async(org_ids, template_path=None, output_path=None):
     if template_path is None:
         template_path = "template.pptx"
     if output_path is None:
-        output_path = "meraki_report.pptx"
+        output_path = "meraki_gov_report.pptx"  # Changed the default output filename to indicate government version
     
-    # Create dummy API client
+    # Create dummy API client with government base URL
     class DummyApiClient:
         def __init__(self, org_ids):
             self.org_ids = org_ids
+            self.base_url = GOV_BASE_URL  # Use the government API base URL
     
     api_client = DummyApiClient(org_ids)
     
