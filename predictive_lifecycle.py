@@ -1235,8 +1235,6 @@ class RhinoPriceCatalog:
             {"url": "https://www.rhinonetworks.com/product/license/meraki-insight-large", "model": "INSIGHT-LICENSE-LARGE"},
             {"url": "https://www.rhinonetworks.com/product/license/meraki-insight-xlarge", "model": "INSIGHT-LICENSE-XLARGE"},
 
-            # Display Licenses
-            {"url": "https://www.rhinonetworks.com/product/license/meraki-display", "model": "DISPLAY"},
         ]
         
         # Get existing model URLs
@@ -1673,7 +1671,7 @@ class RhinoPriceCatalog:
                     
                     # If still no price found, try looking at any element with a dollar sign
                     if not price_found:
-                        dollar_elems = soup.select('*:contains("$")')
+                        dollar_elems = soup.select('*:-soup-contains("$")')
                         for elem in dollar_elems:
                             price_text = elem.text.strip()
                             price_match = re.search(r'\$([0-9,.]+)', price_text)
