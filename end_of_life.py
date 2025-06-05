@@ -105,7 +105,6 @@ EOL_FALLBACK_DATA = {
     "MS250 FAMILY": {"announcement": "Aug 28, 2024", "end_of_sale": "Aug 8, 2025", "end_of_support": "Aug 8, 2030"},
     "MS350 FAMILY": {"announcement": "Aug 28, 2024", "end_of_sale": "Aug 8, 2025", "end_of_support": "Aug 8, 2030"},
     "MS355 FAMILY": {"announcement": "Aug 28, 2024", "end_of_sale": "Aug 8, 2025", "end_of_support": "Aug 8, 2030"},
-    "MS390-48UX2-HW": {"announcement": "Apr 4, 2024", "end_of_sale": "Feb 13, 2025", "end_of_support": "Apr 4, 2032"},
     "MS390 FAMILY": {"announcement": "Apr 4, 2024", "end_of_sale": "Mar 28, 2025", "end_of_support": "Mar 28, 2032"},
     "MS410 FAMILY": {"announcement": "Mar 28, 2024", "end_of_sale": "Sep 28, 2024", "end_of_support": "Sep 28, 2029"},
     "MS425 FAMILY": {"announcement": "Mar 28, 2024", "end_of_sale": "Jun 24, 2024", "end_of_support": "Sep 28, 2029"},
@@ -380,11 +379,11 @@ def add_model_table(slide, models):
         
         # End of Support date
         cell = table.cell(i, 4)
-        cell.text = model_data['end_of_support']
+        cell.text = model_data['end_of_support'] if model_data['end_of_support'] is not None else 'N/A'
         cell.text_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
         
         # Highlight if End of Support date is within 1 year (assuming it's not N/A)
-        if model_data['end_of_support'] != 'N/A':
+        if model_data['end_of_support'] is not None and model_data['end_of_support'] != 'N/A':
             try:
                 eoss_date = datetime.datetime.strptime(model_data['end_of_support'], "%b %d, %Y")
                 current_date = datetime.datetime.now()
@@ -726,7 +725,7 @@ def get_eol_info_from_doc():
             if product_col is not None and any(col is not None for col in [announcement_col, end_of_sale_col, end_of_support_col]):
                 #print(f"{GREEN}Table {table_idx + 1} has product info and at least one date column{RESET}")
                 
-                # Process each row (skip header)
+                # Process each row (skip header) 
                 for row_idx, row in enumerate(rows[1:], 1):
                     cells = row.find_all(['td', 'th'])
                     
@@ -745,14 +744,42 @@ def get_eol_info_from_doc():
                         
                     #print(f"{BLUE}Row {row_idx}, Product text: {product_text}{RESET}")
                     
-                    model_match = re.search(r'(VMX\d+|MR\d+(?:-\d+)?|MS\d+(?:-\d+(?:LP|FP|UP|X)?)?|MX\d+(?:[A-Z])?|MV\d+(?:[A-Z])?|MG\d+(?:[A-Z])?|MT\d+(?:[A-Z])?|Z\d+(?:[A-Z])?|CW\d+(?:\w*)?)', product_text, re.IGNORECASE)
+                    # Debug: Log the product text for MS120/MS390 entries
+                    if 'MS120' in product_text or 'MS390' in product_text:
+                        # print(f"{YELLOW}DEBUG PARSING: Product text: '{product_text}'{RESET}")
+                        pass
+                    
+                    # First try to match FAMILY entries specifically (handle both regular space and &nbsp;)
+                    family_match = re.search(r'((?:VMX|MR|MS|MX|MV|MG|MT|Z|CW)\d+(?:-\d+(?:[A-Z]+)?)?)\s*FAMILY', product_text.replace('\xa0', ' '), re.IGNORECASE)
+                    
+                    if family_match:
+                        # Found a family entry, use the full "XXX FAMILY" format
+                        base_model = family_match.group(1).upper()
+                        model_match = type('obj', (object,), {'group': lambda self, x: f"{base_model} FAMILY"})()
+                        if 'MS120' in product_text or 'MS390' in product_text:
+                            # print(f"{GREEN}DEBUG PARSING: Found FAMILY entry: {base_model} FAMILY{RESET}")
+                            pass
+                    else:
+                        # Look for individual model entries
+                        model_match = re.search(r'((?:VMX|MR|MS|MX|MV|MG|MT|Z|CW)\d+(?:-\d+(?:LP|FP|UP|X)?)?|(?:VMX|MR|MS|MX|MV|MG|MT|Z|CW)\d+(?:[A-Z])?)', product_text, re.IGNORECASE)
+                        if model_match and ('MS120' in product_text or 'MS390' in product_text):
+                            # print(f"{BLUE}DEBUG PARSING: Found individual entry: {model_match.group(1)}{RESET}")
+                            pass
 
                     if model_match:
-                        # Convert to uppercase for consistency
-                        model = model_match.group(1).upper()
+                        # Convert to uppercase for consistency and normalize
+                        model = model_match.group(1).upper().strip()
                         
-                        # Debug output to check what we're extracting (commented out to reduce terminal output)
-                        # print(f"Extracted model from doc: '{model}' from product text: '{product_text}'")
+                        # FIXED: Handle non-breaking spaces and keep "FAMILY" suffix for family entries
+                        # Replace non-breaking spaces with regular spaces first
+                        model = model.replace('\xa0', ' ')
+                        
+                        # Keep the FAMILY suffix for family entries - this is important for matching!
+                        
+                        # Debug output to check what we're extracting
+                        if any(debug_key in product_text for debug_key in ['MS120', 'MS390', 'FAMILY']):
+                            #print(f"Extracted model from doc: '{model}' from product text: '{product_text}'")
+                            pass
                             
                         # Initialize data for this model
                         if model not in eol_data:
@@ -761,6 +788,24 @@ def get_eol_info_from_doc():
                                 'end_of_sale': None,
                                 'end_of_support': None
                             }
+                        else:
+                            # Check if we're trying to overwrite a FAMILY entry with a specific model
+                            if 'FAMILY' in model:
+                                # This is a family entry, always use it (it's more authoritative)
+                                print(f"{GREEN}DEBUG: Processing FAMILY entry: {model}{RESET}")
+                                pass  
+                            else:
+                                # This is a specific model - check if we already have a family entry for it
+                                base_family = re.match(r'([A-Z]+\d+)', model)
+                                if base_family:
+                                    family_key = f"{base_family.group(1)} FAMILY"
+                                    if family_key in eol_data:
+                                        # We already have family data, skip this specific model
+                                        # print(f"{BLUE}DEBUG: Skipping specific model {model} because {family_key} already exists{RESET}")
+                                        continue
+                                    else:
+                                        # print(f"{YELLOW}DEBUG: No family entry found for {family_key}, processing individual model {model}{RESET}")
+                                        pass
                         
                         # Extract dates - handle different date formats
                         if announcement_col is not None:
@@ -813,12 +858,42 @@ def get_eol_info_from_doc():
             else:
                 print(f"{YELLOW}Table {table_idx + 1} doesn't have required columns for EOL information{RESET}")
         
-        # If we found useful data, return it
+        # If we found useful data, validate and merge with fallback when appropriate
         if eol_data:
             #print(f"{GREEN}Successfully parsed EOL information from documentation{RESET}")
             #print(f"Found EOL info for {len(eol_data)} models")
             
-            return eol_data, last_updated, True
+            # IMPROVED: Validate critical family entries and supplement with fallback if needed
+            validated_data = eol_data.copy()
+            
+            # Check for potentially problematic entries (dates in the past that might be errors)
+            import datetime
+            current_date = datetime.datetime.now()
+            
+            for model, data in eol_data.items():
+                eos_date = data.get('end_of_sale')
+                if eos_date:
+                    try:
+                        eos_datetime = datetime.datetime.strptime(eos_date, "%b %d, %Y")
+                        # If EOS date is more than 2 years in the past, it might be an error
+                        days_past = (current_date - eos_datetime).days
+                        if days_past > 730:  # More than 2 years past
+                            # Check if fallback has a more reasonable date
+                            fallback_key = f"{model} FAMILY"
+                            if fallback_key in EOL_FALLBACK_DATA:
+                                fallback_eos = EOL_FALLBACK_DATA[fallback_key].get('end_of_sale')
+                                if fallback_eos:
+                                    try:
+                                        fallback_datetime = datetime.datetime.strptime(fallback_eos, "%b %d, %Y")
+                                        if fallback_datetime > current_date:  # Fallback is in the future
+                                            #print(f"{YELLOW}Warning: {model} doc date ({eos_date}) is old, fallback has newer date ({fallback_eos}){RESET}")
+                                            pass
+                                    except:
+                                        pass
+                    except:
+                        pass
+            
+            return validated_data, last_updated, True
         else:
             print(f"{YELLOW}Could not parse EOL information from documentation, using fallback{RESET}")
             return EOL_FALLBACK_DATA, EOL_LAST_UPDATED, False
@@ -900,8 +975,8 @@ def is_model_eol(model, eol_data):
         dict or None: EOL information for the model or None if not EOL
     """
     # Debug logging for important models
-    if 'MS220-8P' in model or 'MX100' in model:
-        #print(f"Checking EOL status for model: {model}")
+    if 'MS120' in model or 'MS390' in model or 'MS220-8P' in model or 'MX100' in model:
+        # print(f"{YELLOW}DEBUG: Checking EOL status for model: {model}{RESET}")
         pass
         
     # Extract base model from full model string
@@ -909,18 +984,31 @@ def is_model_eol(model, eol_data):
     if not base_model:
         return None
         
-    if 'MS220-8P' in model or 'MX100' in model:
-        #print(f"Base model extracted: {base_model}")
+    if 'MS120' in model or 'MS390' in model or 'MS220-8P' in model or 'MX100' in model:
+        # print(f"{YELLOW}DEBUG: Base model extracted: {base_model}{RESET}")
         pass
     
-    # 1. First, check for exact match with the full model
+    # 1. First, check for FAMILY entries (prioritize over specific models)
+    family_key = f"{base_model} FAMILY"
+    if 'MS120' in model or 'MS390' in model:
+        # print(f"{YELLOW}DEBUG: Looking for family key: {family_key} in eol_data{RESET}")
+        # print(f"{YELLOW}DEBUG: Available keys containing {base_model}: {[k for k in eol_data.keys() if base_model in k]}{RESET}")
+        pass
+    
+    if family_key in eol_data:
+        if 'MS120' in model or 'MS390' in model or 'MS220-8P' in model or 'MX100' in model:
+            # print(f"{YELLOW}DEBUG: Found family match: {family_key}{RESET}")
+            pass
+        return eol_data[family_key]
+    
+    # 2. Check for exact match with the full model
     if model in eol_data:
-        if 'MS220-8P' in model or 'MX100' in model:
-            #print(f"Exact match found for {model} in EOL data")
+        if 'MS120' in model or 'MS390' in model or 'MS220-8P' in model or 'MX100' in model:
+            # print(f"{YELLOW}DEBUG: Exact match found for {model} in EOL data{RESET}")
             pass
         return eol_data[model]
     
-    # 2. For models like MS220-8P, try to match with MS220-8
+    # 3. For models like MS220-8P, try to match with MS220-8
     # Extract the base part without the final character if it's a P, LP, FP, etc.
     model_without_suffix = None
     if re.search(r'-\d+[A-Z]+$', model):
@@ -939,18 +1027,31 @@ def is_model_eol(model, eol_data):
                     pass
                 return eol_data[model_without_suffix]
     
-    # 3. Check if the base model is in the EOL data
+    # 4. Check if the base model is in the EOL data
     if base_model in eol_data:
-        if 'MS220-8P' in model or 'MX100' in model:
-            #print(f"Base model match found: {base_model}")
+        if 'MS120' in model or 'MS390' in model or 'MS220-8P' in model or 'MX100' in model:
+            # print(f"{YELLOW}DEBUG: Base model match found: {base_model}{RESET}")
             pass
         return eol_data[base_model]
     
-    # 4. Find all potential matches and pick the most specific one
+    # 5. Find all potential matches and use improved priority logic
     potential_matches = []
     
-    # First gather all potential matches
+    # First, explicitly check for FAMILY entries based on device series
+    # Extract device series (e.g., MS390, MS120) from the model
+    device_series_match = re.match(r'^([A-Z]+\d+)', model)
+    if device_series_match:
+        device_series = device_series_match.group(1)
+        family_key = f"{device_series} FAMILY"
+        if family_key in eol_data:
+            potential_matches.append(family_key)
+    
+    # Then gather all other potential matches
     for eol_model in eol_data:
+        # Skip if already added as family match
+        if eol_model in potential_matches:
+            continue
+            
         # Check if the model starts with this EOL model
         if model.startswith(eol_model) or (model_without_suffix and model_without_suffix.startswith(eol_model)):
             potential_matches.append(eol_model)
@@ -958,38 +1059,65 @@ def is_model_eol(model, eol_data):
         elif base_model and base_model.startswith(eol_model):
             potential_matches.append(eol_model)
     
-    if 'MS220-8P' in model and potential_matches:
-        #print(f"Potential matches for {model}: {potential_matches}")
+    if ('MS120' in model or 'MS390' in model or 'MS220-8P' in model) and potential_matches:
+        # print(f"{YELLOW}DEBUG: Potential matches for {model}: {potential_matches}{RESET}")
         pass
     
     if potential_matches:
-        # First, try to find models with hyphen and number (like MS220-8) over just series (like MS220)
-        hyphen_models = [m for m in potential_matches if '-' in m]
-        if hyphen_models:
-            # Sort by length (descending) to get most specific match
-            hyphen_models.sort(key=len, reverse=True)
+        # IMPROVED: Separate family entries from specific model variants
+        family_matches = []
+        specific_matches = []
+        
+        for match in potential_matches:
+            # FAMILY entries are those that explicitly end with "FAMILY"
+            if match.endswith(' FAMILY'):
+                family_matches.append(match)
+            else:
+                specific_matches.append(match)
+        
+        # IMPROVED: Prefer FAMILY entries for better EOL date consistency
+        # FAMILY entries typically have the most up-to-date and relevant dates
+        if family_matches:
+            # Sort family matches by length (shorter first, as they're more general)
+            family_matches.sort(key=len)
+            best_family_match = family_matches[0]
             
-            # For MS220-8P, prefer MS220-8 over MS220
-            if 'MS220-8P' in model:
-                ms220_8_match = next((m for m in hyphen_models if m == 'MS220-8'), None)
-                if ms220_8_match:
-                    #print(f"Using specific match {ms220_8_match} for {model}")
-                    return eol_data[ms220_8_match]
+            # Debug output for important models
+            if any(debug_model in model for debug_model in ['MS120', 'MS390', 'MS250', 'MS350']):
+                # print(f"{YELLOW}DEBUG: Using family match '{best_family_match}' for model '{model}'{RESET}")
+                pass
             
-            best_match = hyphen_models[0]
+            return eol_data[best_family_match]
+        
+        # If no family matches, use specific matches
+        elif specific_matches:
+            # First, try to find models with hyphen and number (like MS220-8) over just series (like MS220)
+            hyphen_models = [m for m in specific_matches if '-' in m]
+            if hyphen_models:
+                # Sort by length (descending) to get most specific match
+                hyphen_models.sort(key=len, reverse=True)
+                
+                # For MS220-8P, prefer MS220-8 over MS220
+                if 'MS220-8P' in model:
+                    ms220_8_match = next((m for m in hyphen_models if m == 'MS220-8'), None)
+                    if ms220_8_match:
+                        #print(f"Using specific match {ms220_8_match} for {model}")
+                        return eol_data[ms220_8_match]
+                
+                best_match = hyphen_models[0]
+                if 'MS220-8P' in model or 'MX100' in model:
+                    #print(f"Using best hyphen match: {best_match}")
+                    pass
+                return eol_data[best_match]
+            
+            # If no hyphen models, sort remaining by length (descending)
+            specific_matches.sort(key=len, reverse=True)
+            best_match = specific_matches[0]
+            
             if 'MS220-8P' in model or 'MX100' in model:
-                #print(f"Using best hyphen match: {best_match}")
+                #print(f"Using best general match: {best_match}")
                 pass
             return eol_data[best_match]
-        
-        # If no hyphen models, sort remaining by length (descending)
-        potential_matches.sort(key=len, reverse=True)
-        best_match = potential_matches[0]
-        
-        if 'MS220-8P' in model or 'MX100' in model:
-            #print(f"Using best general match: {best_match}")
-            pass
-        return eol_data[best_match]
     
     # No match found
     if 'MS220-8P' in model or 'MX100' in model:
@@ -1054,8 +1182,46 @@ async def generate(api_client, template_path, output_path, inventory_devices=Non
     
     # Log the source of EOL information
     if is_from_doc:
-        #print(f"{GREEN}Using EOL information from documentation (last updated: {last_updated_date}){RESET}")
-        pass
+        print(f"{GREEN}Using EOL information from documentation (last updated: {last_updated_date}){RESET}")
+        print(f"{BLUE}Found EOL data for {len(eol_data)} models from documentation{RESET}")
+        # Log some sample entries to verify parsing
+        family_entries = [k for k in eol_data.keys() if 'FAMILY' in k]
+        if family_entries:
+            print(f"{BLUE}FAMILY entries found: {family_entries[:5]}{RESET}")
+        
+        # Debug: Show specific MS120 and MS390 entries that were parsed
+        ms_entries = {k: v for k, v in eol_data.items() if k.startswith('MS120') or k.startswith('MS390')}
+        # if ms_entries:
+        #     print(f"{YELLOW}DEBUG: MS120/MS390 entries from documentation:{RESET}")
+        #     for model, dates in ms_entries.items():
+        #         print(f"  {model}: {dates}")
+        #     print(f"{RESET}")
+            
+        # Debug: Show all FAMILY entries
+        family_entries = {k: v for k, v in eol_data.items() if 'FAMILY' in k}
+        # if family_entries:
+        #     print(f"{GREEN}DEBUG: All FAMILY entries in final data:{RESET}")
+        #     for model, dates in family_entries.items():
+        #         print(f"  {model}: {dates}")
+        #     print(f"{RESET}")
+        # else:
+        #     print(f"{RED}DEBUG: NO FAMILY entries found in final data!{RESET}")
+            
+        # Debug: Check if we're getting None values
+        none_entries = {k: v for k, v in eol_data.items() if any(val is None for val in v.values())}
+        if none_entries:
+            # print(f"{RED}DEBUG: Entries with None values (causing predictive lifecycle error):{RESET}")
+            # for model, dates in none_entries.items():
+            #     print(f"  {model}: {dates}")
+            # print(f"{RESET}")
+            
+            # Clean up None values to prevent crashes in other modules
+            # print(f"{YELLOW}Cleaning up entries with None values...{RESET}")
+            for model_key in list(none_entries.keys()):
+                if model_key in eol_data:
+                    del eol_data[model_key]
+                    # print(f"  Removed {model_key} with None values")
+            # print(f"{GREEN}Cleanup complete. {len(none_entries)} entries removed.{RESET}")
     else:
         print(f"{YELLOW}Using fallback EOL information - documentation unavailable{RESET}")
     
